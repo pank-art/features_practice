@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"errors"
 	_ "time"
 
 	"github.com/arangodb/go-driver"
@@ -24,6 +25,10 @@ func TotalGetAddr(ctx context.Context, db driver.Database, addr string) (int64, 
 		return 0, err
 	}
 
+	if income == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
 	return income, nil
 }
 
@@ -49,7 +54,10 @@ func BalanceAddr(ctx context.Context, db driver.Database, addr string) (int64, e
 	if err != nil {
 		return 0, err
 	}
-
+	if income == 0 && spend == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
 	return income - spend, nil
 }
 
@@ -70,6 +78,10 @@ func FirstTimeAddr(ctx context.Context, db driver.Database, addr string) (int64,
 		return 0, err
 	}
 
+	if time == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
 	return time, nil
 }
 
@@ -90,11 +102,15 @@ func LastTimeAddr(ctx context.Context, db driver.Database, addr string) (int64, 
 		return 0, err
 	}
 
+	if time == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
 	return time, nil
 }
 
 // кол-во входящих транзакций
-func CountInTx(ctx context.Context, db driver.Database, addr string) (int64, error) {
+func CountOutTx(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN SUM(FOR doc IN btcOut FILTER doc._to == @addr RETURN 1)"
 	bindVars := map[string]interface{}{
 		"addr": addr,
@@ -105,17 +121,21 @@ func CountInTx(ctx context.Context, db driver.Database, addr string) (int64, err
 	}
 	defer cursor.Close()
 
-	var time int64
-	_, err = cursor.ReadDocument(ctx, &time)
+	var count int64
+	_, err = cursor.ReadDocument(ctx, &count)
 	if err != nil {
 		return 0, err
 	}
 
-	return time, nil
+	if count == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
+	return count, nil
 }
 
 // кол-во исходящих транзакций
-func CountOutTx(ctx context.Context, db driver.Database, addr string) (int64, error) {
+func CountInTx(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN SUM(FOR doc IN btcIn FILTER doc._from == @addr RETURN 1)"
 	bindVars := map[string]interface{}{
 		"addr": addr,
@@ -126,63 +146,25 @@ func CountOutTx(ctx context.Context, db driver.Database, addr string) (int64, er
 	}
 	defer cursor.Close()
 
-	var time int64
-	_, err = cursor.ReadDocument(ctx, &time)
+	var count int64
+	_, err = cursor.ReadDocument(ctx, &count)
 	if err != nil {
 		return 0, err
 	}
 
-	return time, nil
+	if count == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
+	return count, nil
 }
 
 // кол-во адресов на которые уходили средства
-func countOutAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
+func countInAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
 	query := `LET tx = (FOR bin IN btcIn FILTER bin._from == @addr RETURN bin._to)
 				FOR bout IN btcOut 
 					FILTER bout._from IN tx
 						RETURN bout._to`
-	bindVars := map[string]interface{}{
-		"addr": addr,
-	}
-	cursor, err := db.Query(ctx, query, bindVars)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer cursor.Close()
-
-	outAddr := make(map[string]bool)
-	var countAddr int64
-	for {
-		var doc string
-		_, err := cursor.ReadDocument(ctx, &doc)
-		if driver.IsNoMoreDocuments(err) {
-			break
-		} else if err != nil {
-			return 0, nil, err
-		}
-		_, found := outAddr[doc]
-		if !found && doc != addr {
-			outAddr[doc] = false
-			countAddr++
-		}
-	}
-	return countAddr, outAddr, nil
-}
-
-func CountOutAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
-	c, _, err := countOutAddr(ctx, db, addr)
-	if err != nil {
-		return 0, err
-	}
-	return c, nil
-}
-
-// кол-во адресов с которых приходили средства
-func countInAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
-	query := `LET tx = (FOR bout IN btcOut FILTER bout._to == @addr RETURN bout._from)
-				FOR bin IN btcIn 	
-					FILTER bin._to IN tx 
-						RETURN bin._from`
 	bindVars := map[string]interface{}{
 		"addr": addr,
 	}
@@ -202,12 +184,16 @@ func countInAddr(ctx context.Context, db driver.Database, addr string) (int64, m
 		} else if err != nil {
 			return 0, nil, err
 		}
-
 		_, found := inAddr[doc]
 		if !found && doc != addr {
-			inAddr[doc] = true
+			inAddr[doc] = false
 			countAddr++
 		}
+	}
+
+	if countAddr == 0 {
+		err = errors.New("There is no such address")
+		return 0, nil, err
 	}
 	return countAddr, inAddr, nil
 }
@@ -220,12 +206,59 @@ func CountInAddr(ctx context.Context, db driver.Database, addr string) (int64, e
 	return c, nil
 }
 
-func CountSharedAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
-	_, inAddr, err := countInAddr(ctx, db, addr)
+// кол-во адресов с которых приходили средства
+func countOutAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
+	query := `LET tx = (FOR bout IN btcOut FILTER bout._to == @addr RETURN bout._from)
+				FOR bin IN btcIn 	
+					FILTER bin._to IN tx 
+						RETURN bin._from`
+	bindVars := map[string]interface{}{
+		"addr": addr,
+	}
+	cursor, err := db.Query(ctx, query, bindVars)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer cursor.Close()
+
+	outAddr := make(map[string]bool)
+	var countAddr int64
+	for {
+		var doc string
+		_, err := cursor.ReadDocument(ctx, &doc)
+		if driver.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return 0, nil, err
+		}
+
+		_, found := outAddr[doc]
+		if !found && doc != addr {
+			outAddr[doc] = true
+			countAddr++
+		}
+	}
+	if countAddr == 0 {
+		err = errors.New("There is no such address")
+		return 0, nil, err
+	}
+	return countAddr, outAddr, nil
+}
+
+func CountOutAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
+	c, _, err := countOutAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
+	return c, nil
+}
+
+func CountSharedAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	_, outAddr, err := countOutAddr(ctx, db, addr)
+	if err != nil {
+		return 0, err
+	}
+	_, inAddr, err := countInAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -240,11 +273,11 @@ func CountSharedAddr(ctx context.Context, db driver.Database, addr string) (int6
 }
 
 func TotalCountAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
-	_, inAddr, err := countInAddr(ctx, db, addr)
+	count, outAddr, err := countOutAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
-	count, outAddr, err := countOutAddr(ctx, db, addr)
+	_, inAddr, err := countInAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -265,11 +298,11 @@ func TotalCountAddr(ctx context.Context, db driver.Database, addr string) (int64
 // count = 7
 // 7 + 3 - 5 = 5  (3 раза зайдет в if !found и 5 раз в else)
 func CountUniqueAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
-	_, inAddr, err := countInAddr(ctx, db, addr)
+	count, outAddr, err := countOutAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
-	count, outAddr, err := countOutAddr(ctx, db, addr)
+	_, inAddr, err := countInAddr(ctx, db, addr)
 	if err != nil {
 		return 0, err
 	}
@@ -285,50 +318,11 @@ func CountUniqueAddr(ctx context.Context, db driver.Database, addr string) (int6
 }
 
 // среднее кол-во адресов во входных транзакциях
-func AverageCountInAddr(ctx context.Context, db driver.Database, addr string) (float64, error) {
+func AverageCountOutAddr(ctx context.Context, db driver.Database, addr string) (float64, error) {
 	query := `LET tx = (FOR bout IN btcOut FILTER bout._to == @addr RETURN bout._from)
 				FOR bin IN btcIn 	
 					FILTER bin._to IN tx 
 						RETURN bin._to`
-	bindVars := map[string]interface{}{
-		"addr": addr,
-	}
-	cursor, err := db.Query(ctx, query, bindVars)
-	if err != nil {
-		return 0, err
-	}
-	defer cursor.Close()
-
-	inAddr := make(map[string]int64)
-	var countAddr float64
-	var countTx float64
-	for {
-		var doc string
-		_, err := cursor.ReadDocument(ctx, &doc)
-		if driver.IsNoMoreDocuments(err) {
-			break
-		} else if err != nil {
-			return 0, err
-		}
-
-		_, found := inAddr[doc]
-		if found {
-			inAddr[doc]++
-		} else {
-			inAddr[doc] = 1
-			countTx++
-		}
-		countAddr++
-	}
-	return countAddr / countTx, nil
-}
-
-// среднее кол-во адресов в выходящих транзакциях
-func AverageCountOutAddr(ctx context.Context, db driver.Database, addr string) (float64, error) {
-	query := `LET tx = (FOR bin IN btcIn FILTER bin._from == @addr RETURN bin._to)
-				FOR bout IN btcOut 
-					FILTER bout._from IN tx 
-						RETURN bout._from`
 	bindVars := map[string]interface{}{
 		"addr": addr,
 	}
@@ -359,6 +353,53 @@ func AverageCountOutAddr(ctx context.Context, db driver.Database, addr string) (
 		}
 		countAddr++
 	}
+	if countAddr == 0 && countTx == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
+	return countAddr / countTx, nil
+}
 
+// среднее кол-во адресов в выходящих транзакциях
+func AverageCountInAddr(ctx context.Context, db driver.Database, addr string) (float64, error) {
+	query := `LET tx = (FOR bin IN btcIn FILTER bin._from == @addr RETURN bin._to)
+				FOR bout IN btcOut 
+					FILTER bout._from IN tx 
+						RETURN bout._from`
+	bindVars := map[string]interface{}{
+		"addr": addr,
+	}
+	cursor, err := db.Query(ctx, query, bindVars)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close()
+
+	inAddr := make(map[string]int64)
+	var countAddr float64
+	var countTx float64
+	for {
+		var doc string
+		_, err := cursor.ReadDocument(ctx, &doc)
+		if driver.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return 0, err
+		}
+
+		_, found := inAddr[doc]
+		if found {
+			inAddr[doc]++
+		} else {
+			inAddr[doc] = 1
+			countTx++
+		}
+		countAddr++
+	}
+
+	if countAddr == 0 && countTx == 0 {
+		err = errors.New("There is no such address")
+		return 0, err
+	}
 	return countAddr / countTx, nil
 }
