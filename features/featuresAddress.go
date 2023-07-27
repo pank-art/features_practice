@@ -3,11 +3,14 @@ package features
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	_ "time"
 
 	"github.com/arangodb/go-driver"
 )
 
+// всего получено BTC на адрес
 func TotalGetAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN SUM(FOR doc IN btcOut FILTER doc._to == @addr RETURN doc.spentBtc)"
 	bindVars := map[string]interface{}{
@@ -32,6 +35,7 @@ func TotalGetAddr(ctx context.Context, db driver.Database, addr string) (int64, 
 	return income, nil
 }
 
+// баланс BTC
 func BalanceAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN SUM(FOR doc IN btcIn FILTER doc._from == @addr RETURN doc.spentBtc)"
 	bindVars := map[string]interface{}{
@@ -61,6 +65,7 @@ func BalanceAddr(ctx context.Context, db driver.Database, addr string) (int64, e
 	return income - spend, nil
 }
 
+// время первого появления адреса
 func FirstTimeAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN MIN(FOR doc IN btcOut FILTER doc._to == @addr RETURN doc.time)"
 	bindVars := map[string]interface{}{
@@ -85,6 +90,7 @@ func FirstTimeAddr(ctx context.Context, db driver.Database, addr string) (int64,
 	return time, nil
 }
 
+// время последнего появления адреса
 func LastTimeAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	query := "RETURN MAX(FOR doc IN btcIn FILTER doc._from == @addr RETURN doc.time)"
 	bindVars := map[string]interface{}{
@@ -159,7 +165,7 @@ func CountInTx(ctx context.Context, db driver.Database, addr string) (int64, err
 	return count, nil
 }
 
-// кол-во адресов на которые уходили средства
+// кол-во адресов на которые уходили средства + список этих адресов
 func countInAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
 	query := `LET tx = (FOR bin IN btcIn FILTER bin._from == @addr RETURN bin._to)
 				FOR bout IN btcOut 
@@ -198,6 +204,7 @@ func countInAddr(ctx context.Context, db driver.Database, addr string) (int64, m
 	return countAddr, inAddr, nil
 }
 
+// кол-во адресов на которые уходили средства
 func CountInAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	c, _, err := countInAddr(ctx, db, addr)
 	if err != nil {
@@ -206,7 +213,7 @@ func CountInAddr(ctx context.Context, db driver.Database, addr string) (int64, e
 	return c, nil
 }
 
-// кол-во адресов с которых приходили средства
+// кол-во адресов с которых приходили средства + список этих адресов
 func countOutAddr(ctx context.Context, db driver.Database, addr string) (int64, map[string]bool, error) {
 	query := `LET tx = (FOR bout IN btcOut FILTER bout._to == @addr RETURN bout._from)
 				FOR bin IN btcIn 	
@@ -245,6 +252,7 @@ func countOutAddr(ctx context.Context, db driver.Database, addr string) (int64, 
 	return countAddr, outAddr, nil
 }
 
+// кол-во адресов с которых приходили средства
 func CountOutAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	c, _, err := countOutAddr(ctx, db, addr)
 	if err != nil {
@@ -253,6 +261,7 @@ func CountOutAddr(ctx context.Context, db driver.Database, addr string) (int64, 
 	return c, nil
 }
 
+// кол-во общих адресов среди countInAddr и countOutAddr
 func CountSharedAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	_, outAddr, err := countOutAddr(ctx, db, addr)
 	if err != nil {
@@ -272,6 +281,7 @@ func CountSharedAddr(ctx context.Context, db driver.Database, addr string) (int6
 	return count, nil
 }
 
+// общее кол-во адресов среди countInAddr и countOutAddr
 func TotalCountAddr(ctx context.Context, db driver.Database, addr string) (int64, error) {
 	count, outAddr, err := countOutAddr(ctx, db, addr)
 	if err != nil {
@@ -293,6 +303,7 @@ func TotalCountAddr(ctx context.Context, db driver.Database, addr string) (int64
 	return count, nil
 }
 
+// кол-во уникальных адресов среди countInAddr и countOutAddr
 // inAddr = 5 общих + 3 уникальных
 // outAddr = 5 общих + 2 уникальных
 // count = 7
@@ -402,4 +413,206 @@ func AverageCountInAddr(ctx context.Context, db driver.Database, addr string) (f
 		return 0, err
 	}
 	return countAddr / countTx, nil
+}
+
+func NmotifAddr(ctx context.Context, db driver.Database, addr1 string, addr2 string, n int) ([][]string, error) {
+	var (
+		path     [][]string
+		i        int
+		addr1Key string
+		addr2Key string
+	)
+	if 0 < n && n < 4 {
+		parts := strings.Split(addr1, "/")
+		if len(parts) > 1 {
+			addr1Key = parts[1]
+		} else {
+			err := errors.New("Адрес не содержит символа /")
+			return nil, err
+		}
+		parts = strings.Split(addr2, "/")
+		if len(parts) > 1 {
+			addr2Key = parts[1]
+		} else {
+			err := errors.New("Адрес не содержит символа /")
+			return nil, err
+		}
+
+		query := `FOR bn IN btcNext FILTER bn.address == @addr RETURN bn._to`
+		bindVars := map[string]interface{}{
+			"addr": addr1Key,
+		}
+		cursor, err := db.Query(ctx, query, bindVars)
+		if err != nil {
+			return nil, err
+		}
+		defer cursor.Close()
+
+		for {
+			var doc string
+			_, err := cursor.ReadDocument(ctx, &doc)
+			if driver.IsNoMoreDocuments(err) {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			query = `FOR bTx IN btcTx FILTER bTx._id == @bT RETURN bTx`
+			bindVars = map[string]interface{}{
+				"bT": doc,
+			}
+			cursor2, err := db.Query(ctx, query, bindVars)
+			if err != nil {
+				return nil, err
+			}
+			defer cursor2.Close()
+
+			var btx bTx
+			_, err = cursor2.ReadDocument(ctx, &btx)
+			if driver.IsNoMoreDocuments(err) {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			if n == 1 {
+				query = `FOR v, e, p
+							IN @n..@n
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to != @startVertex._id
+								Return {"0": p.edges[0]}`
+			} else if n == 2 {
+				query = `FOR v, e, p
+							IN @n..@n
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to != @startVertex._id
+								Return {"0": p.edges[0], "1": p.edges[1]}`
+			} else if n == 3 {
+				query = `FOR v, e, p
+							IN @n..@n
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to != @startVertex._id
+								Return {"0": p.edges[0], "1": p.edges[1], "2": p.edges[2]}`
+			}
+			bindVars = map[string]interface{}{
+				"startVertex": btx,
+				"n":           n,
+			}
+			cursor3, err := db.Query(ctx, query, bindVars)
+			if err != nil {
+				return nil, err
+			}
+			defer cursor3.Close()
+
+			var p map[string]btcNext
+			for {
+				var one_path []string
+				_, err := cursor3.ReadDocument(ctx, &p)
+				if driver.IsNoMoreDocuments(err) {
+					break
+				} else if err != nil {
+					return nil, err
+				}
+				one_path = append(one_path, addr1Key)
+				if len(p) == n {
+					for j := 0; j < n; j++ {
+						val, _ := p[strconv.Itoa(j)]
+						id := val.From
+						one_path = append(one_path, id)
+						address := val.Address
+						one_path = append(one_path, address)
+					}
+				}
+				if one_path[n*2] == addr2Key {
+					path = append(path, one_path)
+				}
+			}
+
+			if n == 1 {
+				query = `FOR v, e, p
+							IN @n+1..@n+1
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to == @startVertex._id
+								Return {"0": p.edges[0], "1": p.edges[1]}`
+			} else if n == 2 {
+				query = `FOR v, e, p
+							IN @n+1..@n+1
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to == @startVertex._id
+								Return {"0": p.edges[0], "1": p.edges[1], "2": p.edges[2]}`
+			} else if n == 3 {
+				query = `FOR v, e, p
+							IN @n+1..@n+1
+								ANY @startVertex
+							GRAPH "graphNext"
+							FILTER p.edges[0]._to == @startVertex._id
+								Return {"0": p.edges[0], "1": p.edges[1], "2": p.edges[2], "3": p.edges[3]}`
+			}
+
+			bindVars = map[string]interface{}{
+				"startVertex": btx,
+				"n":           n,
+			}
+			cursor4, err := db.Query(ctx, query, bindVars)
+			if err != nil {
+				return nil, err
+			}
+			defer cursor4.Close()
+
+			for {
+				var one_path []string
+				_, err := cursor4.ReadDocument(ctx, &p)
+				if driver.IsNoMoreDocuments(err) {
+					break
+				} else if err != nil {
+					return nil, err
+				}
+				if len(p) == n+1 {
+					for j := 0; j < n+1; j++ {
+						val, _ := p[strconv.Itoa(j)]
+						address := val.Address
+						one_path = append(one_path, address)
+						if j != n {
+							id := val.From
+							one_path = append(one_path, id)
+						}
+					}
+				}
+				if one_path[n*2] == addr2Key {
+					path = append(path, one_path)
+				}
+			}
+			i++
+		}
+	} else {
+		err := errors.New("Invalid n, 1 <= n <= 3")
+		return nil, err
+	}
+	if i == 0 {
+		err := errors.New("invalid addr1")
+		return nil, err
+	}
+	if len(path) == 0 {
+		query := `FOR baddr IN btcAddress FILTER baddr._id == @addr RETURN 1`
+		bindVars := map[string]interface{}{
+			"addr": addr2,
+		}
+		cursor, err := db.Query(ctx, query, bindVars)
+		if err != nil {
+			return nil, err
+		}
+		defer cursor.Close()
+
+		var doc int
+		_, err = cursor.ReadDocument(ctx, &doc)
+
+		if doc != 1 {
+			err := errors.New("invalid addr2")
+			return nil, err
+		}
+	}
+	return path, nil
 }

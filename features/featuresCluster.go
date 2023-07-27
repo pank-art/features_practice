@@ -9,9 +9,22 @@ import (
 	"strconv"
 )
 
-type Book struct {
-	Title   string `json:"title"`
-	NoPages int    `json:"no_pages"`
+type bTx struct {
+	Key  string `json:"_key"`
+	Id   string `json:"_id"`
+	Rev  string `json:"_rev"`
+	Time int64  `json:"time"`
+}
+
+type btcNext struct {
+	Key      string `json:"_key"`
+	Id       string `json:"_id"`
+	From     string `json:"_from"`
+	To       string `json:"_to"`
+	Rev      string `json:"_rev"`
+	Address  string `json:"address"`
+	OutIndex int64  `json:"outIndex"`
+	SpentBtc int64  `json:"spentBtc"`
 }
 
 func GetCluster(ctx context.Context, db driver.Database, walletId string, ch chan []string) (chan []string, error) {
@@ -613,8 +626,8 @@ func AverageCountInClust(ctx context.Context, db driver.Database, walletId strin
 	return countAddr / countTx, nil
 }
 
-func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2 string, n int) ([][]interface{}, error) {
-	var path [][]interface{}
+func NmotifClust(ctx context.Context, db driver.Database, walletId1 string, walletId2 string, n int) ([][]string, error) {
+	var path [][]string
 	var i int
 	if 0 < n && n < 4 {
 		var err error
@@ -658,8 +671,8 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 					}
 					defer cursor2.Close()
 
-					var bTx map[string]interface{}
-					_, err = cursor2.ReadDocument(ctx, &bTx)
+					var btx bTx
+					_, err = cursor2.ReadDocument(ctx, &btx)
 					if driver.IsNoMoreDocuments(err) {
 						break
 					} else if err != nil {
@@ -688,7 +701,7 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 								Return {"0": p.edges[0], "1": p.edges[1], "2": p.edges[2]}`
 					}
 					bindVars = map[string]interface{}{
-						"startVertex": bTx,
+						"startVertex": btx,
 						"n":           n,
 					}
 					cursor3, err := db.Query(ctx, query, bindVars)
@@ -697,34 +710,34 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 					}
 					defer cursor3.Close()
 
-					var p map[string]map[string]interface{}
+					var p map[string]btcNext
 					for {
-						var abc []interface{}
+						var one_path []string
 						_, err := cursor3.ReadDocument(ctx, &p)
 						if driver.IsNoMoreDocuments(err) {
 							break
 						} else if err != nil {
 							return nil, err
 						}
-						abc = append(abc, addr)
+						one_path = append(one_path, addr)
 						if len(p) == n {
 							for j := 0; j < n; j++ {
 								val, _ := p[strconv.Itoa(j)]
-								id, _ := val["_from"]
-								abc = append(abc, id)
-								address := val["address"]
-								abc = append(abc, address)
+								id := val.From
+								one_path = append(one_path, id)
+								address := val.Address
+								one_path = append(one_path, address)
 							}
 						}
-						f, err := AddrKeyInCluster(ctx, db, abc[n*2].(string), walletId2)
+						f, err := AddrKeyInCluster(ctx, db, one_path[n*2], walletId2)
 						if err != nil {
 							return nil, err
 						}
 						if f {
-							path = append(path, abc)
+							path = append(path, one_path)
 						}
-
 					}
+
 					if n == 1 {
 						query = `FOR v, e, p
 							IN @n+1..@n+1
@@ -749,7 +762,7 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 					}
 
 					bindVars = map[string]interface{}{
-						"startVertex": bTx,
+						"startVertex": btx,
 						"n":           n,
 					}
 					cursor4, err := db.Query(ctx, query, bindVars)
@@ -759,7 +772,7 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 					defer cursor4.Close()
 
 					for {
-						var abc []interface{}
+						var one_path []string
 						_, err := cursor4.ReadDocument(ctx, &p)
 						if driver.IsNoMoreDocuments(err) {
 							break
@@ -769,23 +782,23 @@ func Nmotif(ctx context.Context, db driver.Database, walletId1 string, walletId2
 						if len(p) == n+1 {
 							for j := 0; j < n+1; j++ {
 								val, _ := p[strconv.Itoa(j)]
-								address := val["address"]
-								abc = append(abc, address)
+								address := val.Address
+								one_path = append(one_path, address)
 								if j != n {
-									id, _ := val["_from"]
-									abc = append(abc, id)
+									id := val.From
+									one_path = append(one_path, id)
 								}
 							}
 						}
-						f, err := AddrKeyInCluster(ctx, db, abc[n*2].(string), walletId2)
+						f, err := AddrKeyInCluster(ctx, db, one_path[n*2], walletId2)
 						if err != nil {
 							return nil, err
 						}
 						if f {
-							path = append(path, abc)
+							path = append(path, one_path)
 						}
-						i++
 					}
+					i++
 				}
 			}
 		}

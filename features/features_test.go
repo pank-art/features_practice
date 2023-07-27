@@ -1197,7 +1197,7 @@ func TestAverageCountInClust(t *testing.T) {
 	}
 }
 
-func TestNmotif(t *testing.T) {
+func TestNmotifClust(t *testing.T) {
 	// arguments of function you want to test
 	type args struct {
 		walletId1 string
@@ -1213,7 +1213,7 @@ func TestNmotif(t *testing.T) {
 		// if function shoud return an error
 		wantErr bool
 		//
-		expected [][]interface{}
+		expected [][]string
 	}{
 		// TODO: Add test cases.
 		{
@@ -1224,7 +1224,7 @@ func TestNmotif(t *testing.T) {
 				n:         1,
 			},
 			wantErr: false,
-			expected: [][]interface{}{
+			expected: [][]string{
 				{"1", "btcTx/VjeSsLWUwp6kejVz3hWr2Kau8BnMYmBfgm25ceK3CtZcT2q63D4nUzJZ8h5KkUUZ", "3"},
 				{"1", "btcTx/VjeSsLWUwp6kejVz3hWr2Kau8BnMYmBfgm25ceK3CtZcT2q63D4nUzJZ8h5KkUUZ", "4"},
 				{"2", "btcTx/qtNMLgUxe7vitlc4rkzirW3PYKMNYM32Y6Kk4dQEvItEIKUX7P0wxmlTDtJ36vR8", "3"},
@@ -1245,8 +1245,98 @@ func TestNmotif(t *testing.T) {
 	// iterate all test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if val, err := Nmotif(ctx, db, tt.args.walletId1, tt.args.walletId2, tt.args.n); (err != nil) != tt.wantErr {
-				t.Errorf("Nmotif error = %v, wantErr %v, received = %s, expected = %s", err, tt.wantErr, val, tt.expected)
+			if path, err := NmotifClust(ctx, db, tt.args.walletId1, tt.args.walletId2, tt.args.n); (err != nil) != tt.wantErr {
+				t.Errorf("NmotifClust error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				for i, arr := range path {
+					for j, val := range arr {
+						if val != tt.expected[i][j] {
+							t.Errorf("NmotifClust error = %v, wantErr %v, received = %s, expected = %s", err, tt.wantErr, path, tt.expected)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNmotifAddr(t *testing.T) {
+	// arguments of function you want to test
+	type args struct {
+		addr1 string
+		addr2 string
+		n     int
+	}
+	// test cases
+	tests := []struct {
+		// name of test case
+		name string
+		// arguments for function
+		args args
+		// if function shoud return an error
+		wantErr bool
+		//
+		expected [][]string
+	}{
+		// TODO: Add test cases.
+		{
+			name: "test for addr1 btcAddress/1, addr2 btcAddress/2",
+			args: args{
+				addr1: "btcAddress/1",
+				addr2: "btcAddress/2",
+				n:     1,
+			},
+			wantErr: false,
+			expected: [][]string{
+				{"1", "btcTx/0b879ca09946fd4f30ea838e322727e0e7b48b828a8eddff1ea2f908af7c7a9f", "2"},
+				{"1", "btcTx/FBxWSvAIjhi8lAUo8gFB4ld1DYH7qkLUNmZXiOgaB4uUFE3Nyn1BdQ1CLCw1Wcgw", "2"},
+				{"1", "btcTx/7LDC3SyFlJLQp0Wbhc5sC4Sv9FzxtPd8iBaSohzM9RFpXRe8sDV5mKDoc5aGVNcz", "2"},
+			},
+		},
+		{
+			name: "test for addr Daslw12eascaCaawWAsadlasd (not exist)",
+			args: args{
+				addr1: "Daslw12eascaCaawWAsadlasd",
+				addr2: "dITWeUoEbaxbmiVXpM1TbmFlmXJP2ZEe4QR7RqAL7M8BcMrWwiq2jkgsVwBCW5Ot",
+				n:     2,
+			},
+			wantErr:  true,
+			expected: nil,
+		},
+		{
+			name: "test for addr btcAddress/21324 (not exist)",
+			args: args{
+				addr1: "btcAddress/1",
+				addr2: "btcAddress/21324",
+				n:     1,
+			},
+			wantErr:  true,
+			expected: nil,
+		},
+		{
+			name: "test for addr1 btcAddress/4, addr2 btcAddress/3 (0 path)",
+			args: args{
+				addr1: "btcAddress/4",
+				addr2: "btcAddress/3",
+				n:     2,
+			},
+			wantErr:  false,
+			expected: nil,
+		},
+	}
+	// iterate all test cases
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if path, err := NmotifAddr(ctx, db, tt.args.addr1, tt.args.addr2, tt.args.n); (err != nil) != tt.wantErr {
+				t.Errorf("NmotifAddr error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				for i, arr := range path {
+					for j, val := range arr {
+						if val != tt.expected[i][j] {
+							t.Errorf("NmotifAddr error = %v, wantErr %v, received = %s, expected = %s", err, tt.wantErr, path, tt.expected)
+						}
+					}
+				}
 			}
 		})
 	}
