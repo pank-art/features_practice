@@ -27,7 +27,7 @@ type btcNext struct {
 	SpentBtc int64  `json:"spentBtc"`
 }
 
-func GetCluster(ctx context.Context, db driver.Database, walletId string, ch chan []string) (chan []string, error) {
+func getCluster(ctx context.Context, db driver.Database, walletId string, ch chan []string) (chan []string, error) {
 	defer close(ch)
 
 	query := `FOR addr IN btcAddress FILTER addr._walletId == @walletId RETURN addr._id`
@@ -65,7 +65,7 @@ func GetCluster(ctx context.Context, db driver.Database, walletId string, ch cha
 	return ch, nil
 }
 
-func GetCluster_key(ctx context.Context, db driver.Database, walletId string, ch chan []string) (chan []string, error) {
+func getCluster_key(ctx context.Context, db driver.Database, walletId string, ch chan []string) (chan []string, error) {
 	defer close(ch)
 
 	query := `FOR addr IN btcAddress FILTER addr._walletId == @walletId RETURN addr._key`
@@ -123,7 +123,7 @@ func TotalGetClust(ctx context.Context, db driver.Database, walletId string) (in
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -149,7 +149,7 @@ func BalanceClust(ctx context.Context, db driver.Database, walletId string) (int
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -175,7 +175,7 @@ func FirstTimeClust(ctx context.Context, db driver.Database, walletId string) (i
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -211,7 +211,7 @@ func LastTimeClust(ctx context.Context, db driver.Database, walletId string) (in
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -251,7 +251,7 @@ func CountOutTxClust(ctx context.Context, db driver.Database, walletId string) (
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -298,7 +298,7 @@ func CountInTxClust(ctx context.Context, db driver.Database, walletId string) (i
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -345,7 +345,7 @@ func countInClust(ctx context.Context, db driver.Database, walletId string) (int
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -403,7 +403,7 @@ func countOutClust(ctx context.Context, db driver.Database, walletId string) (in
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -522,7 +522,7 @@ func AverageCountOutClust(ctx context.Context, db driver.Database, walletId stri
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -577,7 +577,7 @@ func AverageCountInClust(ctx context.Context, db driver.Database, walletId strin
 	var err error
 	clusterCh := make(chan []string)
 	go func() {
-		clusterCh, err = GetCluster(ctx, db, walletId, clusterCh)
+		clusterCh, err = getCluster(ctx, db, walletId, clusterCh)
 		if err != nil {
 			return
 		}
@@ -633,7 +633,7 @@ func NmotifClust(ctx context.Context, db driver.Database, walletId1 string, wall
 		var err error
 		clusterCh := make(chan []string)
 		go func() {
-			clusterCh, err = GetCluster_key(ctx, db, walletId1, clusterCh)
+			clusterCh, err = getCluster_key(ctx, db, walletId1, clusterCh)
 			if err != nil {
 				return
 			}
