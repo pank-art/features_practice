@@ -35,10 +35,16 @@ func main() {
 
 	// работа с библиотекой:
 
-	balance, err := features.BalanceAddr(ctx, db, "btcAddress/1234ASfk111342dsaakdaw")
+	balance, err := features.BalanceAddr(ctx, db, "btcAddress/1")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(balance)
+
+	count, err := features.CountOutClust(ctx, db, "dITWeUoEbaxbmiVXpM1TbmFlmXJP2ZEe4QR7RqAL7M8BcMrWwiq2jkgsVwBCW5Ot")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(count)
 	// таким образом можно запустить любой метод
 }
